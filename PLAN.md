@@ -227,7 +227,6 @@ Todo esto se puede cambiar después desde Ajustes. Los cambios aplican **del per
 - Faltantes (cubrir con otra bolsa o 50/50), avisos dentro de la app, historial con comprobantes y deshacer.
 - Registro con captura + IA, registro a mano con texto libre, y API para el atajo de iPhone.
 
-**Pendiente para salir a producción:**
-- API key de OpenAI.
-- Proyecto de Supabase.
-- Despliegue en Vercel.
+**En producción:** https://cuentas-casa-silk.vercel.app (Vercel + Supabase en us-east-1). Cada push a `main` se despliega solo.
+
+**Siguiente (Fase 2):** notificaciones push en el iPhone, resúmenes y gráficos mensuales, aprobar o cuestionar gastos compartidos.
