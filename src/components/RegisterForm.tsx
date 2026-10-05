@@ -262,6 +262,12 @@ export function RegisterForm({
             </Field>
           </div>
           <SubmitButton className="w-full">Guardar préstamo</SubmitButton>
+          <a
+            href={`/balance/externo${fileId ? `?archivo=${fileId}` : ""}`}
+            className="block py-2 text-center text-[15px] font-600 text-ink-2 underline underline-offset-4"
+          >
+            ¿Fue con alguien de fuera de la casa?
+          </a>
         </ActionForm>
       )}
       <p className={cx("px-1 text-[13px] text-ink-3", !fileId && "hidden")}>La captura queda guardada como prueba.</p>

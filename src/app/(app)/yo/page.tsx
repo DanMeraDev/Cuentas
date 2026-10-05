@@ -38,14 +38,14 @@ export default async function YoPage() {
         </div>
       </div>
 
-      <Group title={`Mis cuentas de ${periodLabel(month).split(" ")[0]}`} footer="Solo tú ves esta sección. Incluye tus gastos personales y tu parte de los compartidos.">
+      <Group title={`Mis cuentas de ${periodLabel(month).split(" ")[0]}`} footer="Solo tú ves esta sección. Incluye tus gastos personales, tu parte de los compartidos y los préstamos que haces o recibes.">
         <div className="grid grid-cols-3 gap-2 p-4 text-center">
           <div>
             <p className="text-[13px] text-ink-3">Entró</p>
             <p className="amount text-[18px] text-good">{formatCents(income)}</p>
           </div>
           <div>
-            <p className="text-[13px] text-ink-3">Gasté</p>
+            <p className="text-[13px] text-ink-3">Salió</p>
             <p className="amount text-[18px]">{formatCents(spent)}</p>
           </div>
           <div>

@@ -3,7 +3,7 @@ import { requireContext } from "@/lib/auth";
 import { loadHouse } from "@/lib/queries";
 import { ActionButton, ContributionCheck } from "@/components/actions";
 import { Group, LinkButton, MemberDot, Notice, Pill, Row, Screen } from "@/components/ui";
-import { rentDeliver, rentSetAside } from "@/lib/actions/money";
+import { rentAdjust, rentDeliver, rentSetAside } from "@/lib/actions/money";
 import { formatCents } from "@/lib/money";
 import { formatDay } from "@/lib/periods";
 
@@ -36,6 +36,10 @@ export default async function ArriendoPage() {
   const iAmPayer = payerId === ctx.me.id;
   const canDeliver = !iAmPayer && payerId && myState !== "delivered" && (myHolding > 0 || myState === "pending");
   const deliverAmount = myHolding + (myState === "pending" ? myShare : 0);
+  // partes apartadas con un monto distinto al configurado ahora
+  const mismatched = rent.marks.filter(
+    (m) => m.kind === "set_aside" && rent.shares[m.memberId] !== undefined && rent.shares[m.memberId] !== m.amountCents,
+  );
 
   return (
     <Screen title={`Arriendo de ${rent.periodLabel.split(" ")[0]}`} back="/casa">
@@ -53,6 +57,21 @@ export default async function ArriendoPage() {
             Las partes y los aportes suman {formatCents(rent.summary.configuredCents)}, pero el arriendo es{" "}
             {formatCents(rent.totalCents)}. Revisa la configuración.
           </p>
+        )}
+
+        {mismatched.length > 0 && (
+          <div className="mt-4 rounded-2xl bg-paper p-4">
+            <p className="text-[14px] leading-snug">
+              Este mes {mismatched.map((m) => `${name(m.memberId)} apartó ${formatCents(m.amountCents)}`).join(" y ")}, pero ahora{" "}
+              {mismatched.length > 1 ? "las partes son" : "la parte es"}{" "}
+              {mismatched.map((m) => formatCents(rent.shares[m.memberId] ?? 0)).join(" y ")}.
+            </p>
+            <div className="mt-3">
+              <ActionButton action={rentAdjust} fields={{ period: rent.period }} variant="secondary">
+                Ajustar este mes a los montos nuevos
+              </ActionButton>
+            </div>
+          </div>
         )}
 
         <div className="mt-4 space-y-2">

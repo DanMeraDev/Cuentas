@@ -8,6 +8,13 @@
       "when": 1791141466992,
       "tag": "20261004191746_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791158482934,
+      "tag": "20261005000122_external_debts",
+      "breakpoints": true
     }
   ]
 }

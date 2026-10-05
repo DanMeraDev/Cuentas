@@ -63,7 +63,7 @@ export type RentState = {
     skipped: boolean;
     eventId: string | null;
   }[];
-  marks: { memberId: string; kind: "set_aside" | "delivered"; eventId: string; markedOn: string }[];
+  marks: { memberId: string; kind: "set_aside" | "delivered"; eventId: string; markedOn: string; amountCents: number }[];
   payment: { paidBy: string; paidOn: string; eventId: string; amountCents: number } | null;
   summary: RentSummary;
 };
@@ -219,6 +219,7 @@ export const loadHouse = cache(async (ctx: AppContext) => {
       kind: m.kind as "set_aside" | "delivered",
       eventId: m.eventId,
       markedOn: m.markedOn,
+      amountCents: m.amountCents,
     }));
     const payment = rentPayment
       ? { paidBy: rentPayment.paidBy, paidOn: rentPayment.paidOn, eventId: rentPayment.eventId, amountCents: rentPayment.amountCents }

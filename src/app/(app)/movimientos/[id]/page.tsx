@@ -2,8 +2,10 @@ import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { requireContext } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
+import { Download, Expand } from "lucide-react";
 import { UndoButton } from "@/components/actions";
-import { Group, MemberBadge, Notice, Row, Screen } from "@/components/ui";
+import { AttachReceipt } from "@/components/AttachReceipt";
+import { Group, MemberBadge, Notice, Row, Screen, buttonClass } from "@/components/ui";
 import { categoryOf } from "@/lib/defaults";
 import { formatCents } from "@/lib/money";
 import { formatDay } from "@/lib/periods";
@@ -19,6 +21,10 @@ const KIND_LABEL: Record<string, string> = {
   transfer_in: "Entró desde otra bolsa",
   transfer_out: "Salió a otra bolsa",
   shortfall: "Cubrió faltante",
+  extra: "Plata agregada",
+  rent_adjust: "Ajuste de la parte",
+  external_loan: "Préstamo de fuera",
+  external_payment: "Pago de préstamo de fuera",
 };
 
 export default async function EventoPage({ params }: PageProps<"/movimientos/[id]">) {
@@ -57,12 +63,25 @@ export default async function EventoPage({ params }: PageProps<"/movimientos/[id
         </div>
       </div>
 
-      {file && canSeeFile(file, ctx.household.id, ctx.me.id) && (
+      {file && canSeeFile(file, ctx.household.id, ctx.me.id) ? (
         <Group title="Comprobante">
           <a href={`/api/archivos/${file.id}`} target="_blank" rel="noreferrer" className="block">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`/api/archivos/${file.id}`} alt="Comprobante" className="max-h-[480px] w-full object-contain" />
           </a>
+          <div className="grid grid-cols-2 gap-2 p-3">
+            <a href={`/api/archivos/${file.id}`} target="_blank" rel="noreferrer" className={buttonClass("secondary")}>
+              <Expand size={18} /> Ver grande
+            </a>
+            <a href={`/api/archivos/${file.id}?descargar=1`} className={buttonClass("secondary")}>
+              <Download size={18} /> Descargar
+            </a>
+          </div>
+          <AttachReceipt eventId={event.id} replace />
+        </Group>
+      ) : (
+        <Group title="Comprobante" footer="¿No lo guardaste al registrar? Súbelo ahora y queda como prueba.">
+          <AttachReceipt eventId={event.id} />
         </Group>
       )}
 
@@ -93,7 +112,9 @@ export default async function EventoPage({ params }: PageProps<"/movimientos/[id
                     ? "Su parte del gasto"
                     : l.kind === "contribution_share"
                       ? "Su parte del aporte"
-                      : "Préstamo"
+                      : l.kind === "rent_adjust"
+                        ? "Devolución del arriendo"
+                        : "Préstamo"
               }
               value={formatCents(l.amountCents)}
             />

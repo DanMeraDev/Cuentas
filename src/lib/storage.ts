@@ -43,8 +43,10 @@ export async function storeReceipt(opts: {
   return { file, duplicateOf: duplicate ?? null };
 }
 
-export async function signedUrl(storagePath: string, seconds = 600): Promise<string | null> {
-  const { data } = await supabaseAdmin.storage.from(BUCKET).createSignedUrl(storagePath, seconds);
+export async function signedUrl(storagePath: string, seconds = 600, downloadAs?: string): Promise<string | null> {
+  const { data } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .createSignedUrl(storagePath, seconds, downloadAs ? { download: downloadAs } : undefined);
   return data?.signedUrl ?? null;
 }
 

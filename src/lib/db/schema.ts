@@ -456,6 +456,73 @@ export const servicePayments = pgTable(
 ).enableRLS();
 
 // ---------------------------------------------------------------------------
+// Préstamos con gente de fuera de la casa
+// ---------------------------------------------------------------------------
+
+export const externalDebts = pgTable(
+  "external_debts",
+  {
+    id: id(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    eventId: eventRef(),
+    personName: text("person_name").notNull(),
+    // we_owe: nos prestaron | they_owe: le prestamos
+    direction: text("direction").notNull(),
+    // pot: la plata entró o salió de una bolsa (es de la casa) | personal: de un miembro
+    mode: text("mode").notNull(),
+    potId: uuid("pot_id").references(() => pots.id, { onDelete: "restrict" }),
+    amountCents: integer("amount_cents").notNull(),
+    description: text("description").notNull(),
+    occurredOn: date("occurred_on").notNull(),
+  },
+  (t) => [index("external_debts_household_idx").on(t.householdId)],
+).enableRLS();
+
+// Cuánto le toca a cada miembro de un préstamo externo
+export const externalDebtShares = pgTable("external_debt_shares", {
+  id: id(),
+  externalDebtId: uuid("external_debt_id")
+    .notNull()
+    .references(() => externalDebts.id, { onDelete: "cascade" }),
+  memberId: uuid("member_id")
+    .notNull()
+    .references(() => members.id, { onDelete: "restrict" }),
+  amountCents: integer("amount_cents").notNull(),
+}).enableRLS();
+
+export const externalPayments = pgTable("external_payments", {
+  id: id(),
+  householdId: uuid("household_id")
+    .notNull()
+    .references(() => households.id, { onDelete: "cascade" }),
+  eventId: eventRef(),
+  externalDebtId: uuid("external_debt_id")
+    .notNull()
+    .references(() => externalDebts.id, { onDelete: "cascade" }),
+  // quién pagó (we_owe) o quién recibió la devolución (they_owe)
+  memberId: uuid("member_id")
+    .notNull()
+    .references(() => members.id, { onDelete: "restrict" }),
+  potId: uuid("pot_id").references(() => pots.id, { onDelete: "restrict" }),
+  amountCents: integer("amount_cents").notNull(),
+  occurredOn: date("occurred_on").notNull(),
+}).enableRLS();
+
+// A qué parte de quién se aplicó cada pago
+export const externalPaymentShares = pgTable("external_payment_shares", {
+  id: id(),
+  paymentId: uuid("payment_id")
+    .notNull()
+    .references(() => externalPayments.id, { onDelete: "cascade" }),
+  memberId: uuid("member_id")
+    .notNull()
+    .references(() => members.id, { onDelete: "restrict" }),
+  amountCents: integer("amount_cents").notNull(),
+}).enableRLS();
+
+// ---------------------------------------------------------------------------
 // Avisos y acceso del atajo de iPhone
 // ---------------------------------------------------------------------------
 

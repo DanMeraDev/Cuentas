@@ -237,3 +237,27 @@ describe("mensajes del arriendo", () => {
     expect(s.toDeliver).toEqual([]);
   });
 });
+
+import { allocateExternal, externalRemaining } from "./external";
+
+describe("préstamos con gente de fuera", () => {
+  const shares = [
+    { memberId: A, amountCents: 1000 },
+    { memberId: B, amountCents: 1000 },
+  ];
+  it("si A paga los $20 de su bolsillo, cubre su parte y la de B", () => {
+    const rem = externalRemaining(shares, []);
+    expect(allocateExternal(rem, 2000, "self-first", A)).toEqual({ a: 1000, b: 1000 });
+  });
+  it("si A paga solo $10, cubre su parte", () => {
+    expect(allocateExternal(externalRemaining(shares, []), 1000, "self-first", A)).toEqual({ a: 1000 });
+  });
+  it("desde una bolsa se reparte parejo", () => {
+    expect(allocateExternal(externalRemaining(shares, []), 1001, "even")).toEqual({ a: 501, b: 500 });
+  });
+  it("parejo respeta lo que le falta a cada uno", () => {
+    const rem = externalRemaining(shares, [{ memberId: A, amountCents: 800 }]);
+    expect(rem).toEqual({ a: 200, b: 1000 });
+    expect(allocateExternal(rem, 1000, "even")).toEqual({ a: 200, b: 800 });
+  });
+});

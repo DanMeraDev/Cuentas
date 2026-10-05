@@ -5,6 +5,8 @@ import { loadHouse } from "@/lib/queries";
 import { debtRemaining } from "@/lib/domain/balances";
 import { BalanceHero } from "@/components/house";
 import { DebtPayForm } from "@/components/DebtPayForm";
+import { ExternalPayForm } from "@/components/ExternalPayForm";
+import { externalRemaining } from "@/lib/domain/external";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { ReceiptPicker } from "@/components/ReceiptPicker";
 import { Empty, Group, LinkButton, MemberDot, Row, Screen } from "@/components/ui";
@@ -20,6 +22,7 @@ const KIND: Record<string, string> = {
   debt: "Préstamo",
   debt_payment: "Pago",
   settlement: "Ajuste de cuentas",
+  rent_adjust: "Devolución del arriendo",
 };
 
 export default async function BalancePage() {
@@ -42,6 +45,32 @@ export default async function BalancePage() {
     }),
   ]);
   const pays = payments.filter((p): p is { debtId: string; amountCents: number } => !!p.debtId);
+  const external = await db.query.externalDebts.findMany({
+    where: eq(schema.externalDebts.householdId, hh),
+    orderBy: desc(schema.externalDebts.occurredOn),
+  });
+  const extIds = external.map((d) => d.id);
+  const [extShares, extPayments] = extIds.length
+    ? await Promise.all([
+        db.query.externalDebtShares.findMany({ where: inArray(schema.externalDebtShares.externalDebtId, extIds) }),
+        db.query.externalPayments.findMany({ where: inArray(schema.externalPayments.externalDebtId, extIds) }),
+      ])
+    : [[], []];
+  const extPaid = extPayments.length
+    ? await db.query.externalPaymentShares.findMany({
+        where: inArray(schema.externalPaymentShares.paymentId, extPayments.map((p) => p.id)),
+      })
+    : [];
+  const openExternal = external
+    .map((d) => {
+      const paymentIds = extPayments.filter((p) => p.externalDebtId === d.id).map((p) => p.id);
+      const remaining = externalRemaining(
+        extShares.filter((s) => s.externalDebtId === d.id),
+        extPaid.filter((p) => paymentIds.includes(p.paymentId)),
+      );
+      return { d, remaining, total: Object.values(remaining).reduce((a, b) => a + b, 0) };
+    })
+    .filter((x) => x.total > 0);
   const open = debts
     .map((d) => ({ d, remaining: debtRemaining(d, pays) }))
     .filter((x) => x.remaining > 0 && (x.d.debtorId === ctx.me.id || x.d.creditorId === ctx.me.id));
@@ -121,6 +150,47 @@ export default async function BalancePage() {
           ))
         ) : (
           <Empty title="No hay préstamos pendientes" />
+        )}
+      </Group>
+
+      <Group
+        title="Con gente de fuera"
+        action={<LinkButton href="/balance/externo" variant="secondary" className="h-9 px-3.5 text-[14px]">Nuevo</LinkButton>}
+      >
+        {openExternal.length ? (
+          openExternal.map(({ d, remaining, total }) => (
+            <div key={d.id} className="px-4 py-3">
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[16px] font-600">
+                    {d.direction === "we_owe" ? `Le debemos a ${d.personName}` : `${d.personName} nos debe`}
+                  </p>
+                  <p className="text-[13px] text-ink-2">
+                    {d.description} · {formatDay(d.occurredOn)}
+                  </p>
+                  <p className="mt-1 text-[13px] text-ink-2">
+                    {Object.entries(remaining)
+                      .filter(([, v]) => v > 0)
+                      .map(([id, v]) => `${id === ctx.me.id ? "Tú" : member(id)?.name}: ${formatCents(v)}`)
+                      .join(" · ")}
+                  </p>
+                </div>
+                <span className="amount text-[16px]">{formatCents(total)}</span>
+              </div>
+              <ExternalPayForm
+                debtId={d.id}
+                weOwe={d.direction === "we_owe"}
+                personName={d.personName}
+                remainingCents={total}
+                members={ctx.members.map((m) => ({ id: m.id, name: m.name }))}
+                meId={ctx.me.id}
+                pots={house.pots.map((p) => ({ id: p.id, name: p.name, emoji: p.emoji }))}
+                defaultPotId={d.mode === "pot" ? d.potId : null}
+              />
+            </div>
+          ))
+        ) : (
+          <Empty title="Nada pendiente con gente de fuera" />
         )}
       </Group>
 

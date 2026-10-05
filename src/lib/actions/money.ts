@@ -17,7 +17,7 @@ import {
   transferBetweenPots,
   type Ctx,
 } from "@/lib/ledger";
-import { allocatePayment, pairBalance, potDeliveries } from "@/lib/domain/balances";
+import { allocatePayment, pairBalance, potDeliveries, takeFromHolders } from "@/lib/domain/balances";
 import { rentSummary, setAsideNotice } from "@/lib/domain/rent";
 import { loadHouse } from "@/lib/queries";
 import { formatCents, parseAmountToCents, splitEvenly } from "@/lib/money";
@@ -273,7 +273,7 @@ export async function rentSetAside(_: ActionResult, form: FormData): Promise<Act
             payerId: rent.payerId,
             totalCents: rent.totalCents,
             lines: house.rent!.lines,
-            marks: [...house.rent!.marks, { memberId: ctx.me.id, kind: "set_aside", eventId: "", markedOn: occurredOn }],
+            marks: [...house.rent!.marks, { memberId: ctx.me.id, kind: "set_aside", eventId: "", markedOn: occurredOn, amountCents: share }],
             payment: house.rent!.payment,
             holdings: {},
           });
@@ -669,7 +669,11 @@ export async function createDebt(_: ActionResult, form: FormData): Promise<Actio
         .insert(schema.debts)
         .values({ householdId: ctx.household.id, eventId, debtorId, creditorId, amountCents: amount, description, occurredOn })
         .returning({ id: schema.debts.id });
-      await owe(tx, { householdId: ctx.household.id, eventId, occurredOn }, debtorId, creditorId, amount, "debt", debt.id);
+      const c: Ctx = { householdId: ctx.household.id, eventId, occurredOn };
+      await owe(tx, c, debtorId, creditorId, amount, "debt", debt.id);
+      // la plata sale de quien presta y entra a quien la recibe
+      await personal(tx, c, creditorId, -amount, "prestamo", `Le presté a ${memberOf(ctx, debtorId).name}: ${description}`);
+      await personal(tx, c, debtorId, amount, "prestamo", `Me prestó ${memberOf(ctx, creditorId).name}: ${description}`);
       await notify(
         tx,
         ctx.household.id,
@@ -718,7 +722,10 @@ export async function payDebt(_: ActionResult, form: FormData): Promise<ActionRe
         fileId,
         data: { debtId: debt.id },
       });
-      await owe(tx, { householdId: ctx.household.id, eventId, occurredOn }, debt.creditorId, debt.debtorId, amount, "debt_payment", debt.id);
+      const c: Ctx = { householdId: ctx.household.id, eventId, occurredOn };
+      await owe(tx, c, debt.creditorId, debt.debtorId, amount, "debt_payment", debt.id);
+      await personal(tx, c, debt.debtorId, -amount, "prestamo", `Le pagué a ${creditor.name}: ${debt.description}`);
+      await personal(tx, c, debt.creditorId, amount, "prestamo", `Me pagó ${debtor.name}: ${debt.description}`);
       await notify(tx, ctx.household.id, others(ctx), "Deudas", `${debtor.name} le pagó ${formatCents(amount)} a ${creditor.name} (${debt.description}).`, "/balance");
     });
     return done(amount === remaining ? "Deuda saldada." : "Abono registrado.", nextUrl(form));
@@ -789,7 +796,11 @@ export async function settleUp(_: ActionResult, form: FormData): Promise<ActionR
           open,
           payments.filter((p): p is { debtId: string; amountCents: number } => !!p.debtId),
         );
-        for (const a of allocations) await owe(tx, c, payee, payer, a.amountCents, "debt_payment", a.debtId);
+        for (const a of allocations) {
+          await owe(tx, c, payee, payer, a.amountCents, "debt_payment", a.debtId);
+          await personal(tx, c, payer, -a.amountCents, "prestamo", `Pago de préstamo a ${memberOf(ctx, payee).name}`);
+          await personal(tx, c, payee, a.amountCents, "prestamo", `Pago de préstamo de ${memberOf(ctx, payer).name}`);
+        }
         await owe(tx, c, payee, payer, unallocatedCents, "settlement");
       }
       await notify(tx, hh, [other.id].filter((id) => ctx.members.find((m) => m.id === id)?.userId), "Cuentas saldadas", `${ctx.me.name} registró que quedaron a mano.`, "/balance");
@@ -809,4 +820,129 @@ export async function markNotificationsRead() {
     .set({ readAt: new Date() })
     .where(and(eq(schema.notifications.memberId, ctx.me.id), isNull(schema.notifications.readAt)));
   revalidatePath("/", "layout");
+}
+
+// ---------------------------------------------------------------------------
+// Comprobante agregado después
+// ---------------------------------------------------------------------------
+
+export async function attachReceipt(_: ActionResult, form: FormData): Promise<ActionResult> {
+  return attempt(async () => {
+    const ctx = await actionContext();
+    const event = await db.query.events.findFirst({
+      where: and(eq(schema.events.id, str(form, "eventId")), eq(schema.events.householdId, ctx.household.id)),
+    });
+    if (!event || (event.privateTo && event.privateTo !== ctx.me.id)) return fail("Ese registro ya no existe.");
+    const fileId = await fileOf(ctx, form);
+    if (!fileId) return fail("Primero elige la imagen del comprobante.");
+    await db.transaction(async (tx) => {
+      if (event.fileId && event.fileId !== fileId) {
+        await tx.update(schema.files).set({ draftStatus: "none" }).where(eq(schema.files.id, event.fileId));
+      }
+      await tx.update(schema.events).set({ fileId }).where(eq(schema.events.id, event.id));
+      await tx.update(schema.files).set({ draftStatus: "used", privateTo: event.privateTo }).where(eq(schema.files.id, fileId));
+      if (!event.privateTo) {
+        await notify(tx, ctx.household.id, others(ctx), "Comprobante agregado", `${ctx.me.name} subió el comprobante de «${event.title}».`, `/movimientos/${event.id}`);
+      }
+    });
+    return done("Comprobante guardado.");
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Plata extra a una bolsa (sobrante de antes, un regalo, o de mi bolsillo)
+// ---------------------------------------------------------------------------
+
+export async function addPotMoney(_: ActionResult, form: FormData): Promise<ActionResult> {
+  return attempt(async () => {
+    const ctx = await actionContext();
+    const pot = await potOf(ctx, str(form, "potId"));
+    const amount = amountOf(form);
+    const holder = memberOf(ctx, str(form, "holderId") || ctx.me.id, "quién tiene la plata");
+    const fromPocket = str(form, "source") === "pocket";
+    const occurredOn = dateOf(form, ctx);
+    const description = str(form, "description") || (fromPocket ? `Puse plata en ${pot.name}` : `Plata extra para ${pot.name}`);
+    const fileId = await fileOf(ctx, form);
+    await db.transaction(async (tx) => {
+      const eventId = await createEvent(tx, {
+        householdId: ctx.household.id,
+        type: "pot_income",
+        actorId: ctx.me.id,
+        occurredOn,
+        amountCents: amount,
+        title: description,
+        detail: `${pot.emoji} ${pot.name} · la tiene ${holder.name}${fromPocket ? " · de su bolsillo" : ""}`,
+        category: "ingreso",
+        fileId,
+        data: { potId: pot.id, holderId: holder.id, source: fromPocket ? "pocket" : "outside" },
+      });
+      const c: Ctx = { householdId: ctx.household.id, eventId, occurredOn };
+      await potMove(tx, c, pot.id, holder.id, amount, "extra");
+      if (fromPocket) {
+        await personal(tx, c, holder.id, -amount, pot.kind === "food" ? "super" : pot.kind === "services" ? "servicios" : pot.kind === "rent" ? "arriendo" : "casa", description);
+      }
+      await notify(tx, ctx.household.id, others(ctx), pot.name, `${ctx.me.name} agregó ${formatCents(amount)} a ${pot.name}.`, `/casa/bolsas/${pot.id}`);
+    });
+    return done(`Agregaste ${formatCents(amount)} a ${pot.name}.`, nextUrl(form));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Ajustar el arriendo del mes cuando cambian las partes después de apartarlas
+// ---------------------------------------------------------------------------
+
+export async function rentAdjust(_: ActionResult, form: FormData): Promise<ActionResult> {
+  return attempt(async () => {
+    const ctx = await actionContext();
+    const { rent, shares } = await rentContext(ctx);
+    const period = str(form, "period") || monthKey(todayISO(ctx.household.timezone));
+    const occurredOn = todayISO(ctx.household.timezone);
+    const marks = await db.query.rentMarks.findMany({
+      where: and(eq(schema.rentMarks.householdId, ctx.household.id), eq(schema.rentMarks.period, period), eq(schema.rentMarks.kind, "set_aside")),
+    });
+    const diffs = marks
+      .map((m) => ({ mark: m, diff: m.amountCents - (shares[m.memberId] ?? m.amountCents) }))
+      .filter((d) => d.diff !== 0);
+    if (!diffs.length) return fail("Las partes ya coinciden con el monto actual.");
+
+    const lines: string[] = [];
+    await db.transaction(async (tx) => {
+      const eventId = await createEvent(tx, {
+        householdId: ctx.household.id,
+        type: "rent_adjust",
+        actorId: ctx.me.id,
+        occurredOn,
+        title: `Ajuste del arriendo de ${periodLabel(period)}`,
+        category: "arriendo",
+        data: { period, diffs: diffs.map((d) => ({ memberId: d.mark.memberId, from: d.mark.amountCents, to: shares[d.mark.memberId] })) },
+      });
+      const c: Ctx = { householdId: ctx.household.id, eventId, occurredOn };
+      for (const { mark, diff } of diffs) {
+        const m = memberOf(ctx, mark.memberId);
+        if (diff > 0) {
+          // apartó de más: se le devuelve la diferencia de la bolsa del arriendo
+          const holdings = await currentHoldings(tx, ctx.household.id, [rent.potId]);
+          const parts = takeFromHolders(holdings[rent.potId] ?? {}, diff, m.id);
+          const taken = parts.reduce((a, p) => a + p.amountCents, 0);
+          if (taken < diff) throw new UserError(`En la bolsa del arriendo no hay ${formatCents(diff)} para devolverle a ${m.name}.`);
+          for (const p of parts) {
+            await potMove(tx, c, rent.potId, p.holderId, -p.amountCents, "rent_adjust");
+            // si la plata la tiene otra persona, esa persona se la debe devolver
+            if (p.holderId !== m.id) await owe(tx, c, p.holderId, m.id, p.amountCents, "rent_adjust");
+          }
+          await personal(tx, c, m.id, diff, "arriendo", `Devolución de la parte del arriendo de ${periodLabel(period)}`);
+          lines.push(`a ${m.name} se le devuelven ${formatCents(diff)}`);
+        } else {
+          // apartó de menos: pone la diferencia
+          await potMove(tx, c, rent.potId, m.id, -diff, "rent_share");
+          await personal(tx, c, m.id, diff, "arriendo", `Diferencia de la parte del arriendo de ${periodLabel(period)}`);
+          lines.push(`${m.name} pone ${formatCents(-diff)} más`);
+        }
+        await tx.update(schema.rentMarks).set({ amountCents: shares[mark.memberId] }).where(eq(schema.rentMarks.id, mark.id));
+      }
+      await tx.update(schema.events).set({ detail: lines.join(" · ") }).where(eq(schema.events.id, eventId));
+      await notify(tx, ctx.household.id, others(ctx), "Arriendo ajustado", `${ctx.me.name} ajustó las partes de ${periodLabel(period)}: ${lines.join(", ")}.`, "/casa/arriendo");
+    });
+    return done(`Listo: ${lines.join(", ")}.`);
+  });
 }

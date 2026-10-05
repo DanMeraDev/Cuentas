@@ -3,11 +3,11 @@ import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { requireContext } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
 import { loadHouse } from "@/lib/queries";
-import { ActionForm, AmountInput, Field, SubmitButton, inputClass } from "@/components/forms";
+import { ActionForm, AmountInput, Field, Segmented, SubmitButton, inputClass } from "@/components/forms";
 import { EventItem } from "@/components/house";
 import { ActionButton } from "@/components/actions";
 import { Empty, Group, MemberDot, Notice, Row, Screen } from "@/components/ui";
-import { coverShortfall, handOver, movePotMoney } from "@/lib/actions/money";
+import { addPotMoney, coverShortfall, handOver, movePotMoney } from "@/lib/actions/money";
 import { formatCents } from "@/lib/money";
 
 export default async function BolsaPage({ params }: PageProps<"/casa/bolsas/[id]">) {
@@ -92,6 +92,38 @@ export default async function BolsaPage({ params }: PageProps<"/casa/bolsas/[id]
             />
           );
         })}
+      </Group>
+
+      <Group title="Agregar plata a la bolsa" footer="Para plata que no viene de un aporte: lo que sobró de antes, un regalo, o algo que alguien pone de su bolsillo.">
+        <ActionForm action={addPotMoney} className="space-y-3 p-4" resetOnSuccess>
+          <input type="hidden" name="potId" value={pot.id} />
+          <Field label="Monto">
+            <AmountInput name="amount" required />
+          </Field>
+          <Field label="¿Quién tiene esa plata?">
+            <Segmented
+              name="holderId"
+              defaultValue={ctx.me.id}
+              options={ctx.members.map((m) => ({ value: m.id, label: m.id === ctx.me.id ? "Yo" : m.name }))}
+            />
+          </Field>
+          <Field label="¿De dónde sale?">
+            <Segmented
+              name="source"
+              defaultValue="outside"
+              options={[
+                { value: "outside", label: "Ya la teníamos", hint: "Sobrante, regalo…" },
+                { value: "pocket", label: "De su bolsillo", hint: "Cuenta como gasto suyo" },
+              ]}
+            />
+          </Field>
+          <Field label="Detalle (opcional)">
+            <input name="description" placeholder="Ej. Sobrante de septiembre" className={inputClass} />
+          </Field>
+          <SubmitButton className="w-full" variant="secondary">
+            Agregar a {pot.name}
+          </SubmitButton>
+        </ActionForm>
       </Group>
 
       {deliveries.map((d, i) => (

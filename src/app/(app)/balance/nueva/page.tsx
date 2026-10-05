@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireContext } from "@/lib/auth";
 import { ActionForm, AmountInput, Field, Segmented, SubmitButton, inputClass } from "@/components/forms";
 import { ReceiptPicker } from "@/components/ReceiptPicker";
@@ -12,6 +13,12 @@ export default async function NuevaDeudaPage() {
   const today = todayISO(ctx.household.timezone);
   return (
     <Screen title="Préstamo o deuda" back="/balance">
+      <div className="mb-4 grid grid-cols-2 gap-2">
+        <span className="flex h-11 items-center justify-center rounded-full bg-ink text-[15px] font-700 text-sheet">Entre nosotros</span>
+        <Link href="/balance/externo" className="flex h-11 items-center justify-center rounded-full bg-sheet text-[15px] font-700">
+          Con alguien de fuera
+        </Link>
+      </div>
       <ActionForm action={createDebt} className="space-y-4">
         <div className="space-y-4 rounded-2xl bg-sheet p-4">
           <Field label="¿Qué pasó?">

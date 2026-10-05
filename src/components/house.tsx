@@ -124,6 +124,10 @@ const TYPE_ICON: Record<string, string> = {
   debt_payment: "✅",
   settlement: "✅",
   income: "💵",
+  pot_income: "💵",
+  rent_adjust: "🏠",
+  external_debt: "🤝",
+  external_payment: "✅",
 };
 
 export function EventItem({ event, members }: { event: EventRecord; members: Member[] }) {
@@ -131,7 +135,7 @@ export function EventItem({ event, members }: { event: EventRecord; members: Mem
   const icon =
     event.type === "expense" ? categoryOf(event.category).emoji : event.type === "service_payment" ? event.title.split(" ")[0] : TYPE_ICON[event.type] ?? "•";
   const title = event.type === "service_payment" ? event.title.split(" ").slice(1).join(" ") : event.title;
-  const isIncome = event.type === "contribution" || event.type === "income";
+  const isIncome = event.type === "contribution" || event.type === "income" || event.type === "pot_income";
   return (
     <Row
       href={`/movimientos/${event.id}`}
