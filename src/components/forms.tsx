@@ -1,6 +1,8 @@
 "use client";
 
-import { useActionState, useState, type ReactNode } from "react";
+import { useActionState, useRef, useState, type ReactNode } from "react";
+import { Calculator } from "lucide-react";
+import { CalculatorSheet } from "./Calculator";
 import { useFormStatus } from "react-dom";
 import { cx } from "@/lib/cx";
 import { buttonClass } from "./ui";
@@ -106,10 +108,21 @@ export function AmountInput({
   autoFocus?: boolean;
   large?: boolean;
 }) {
+  const ref = useRef<HTMLInputElement>(null);
+  // null = cerrada; si no, el valor que tenía el campo al abrirla
+  const [calc, setCalc] = useState<string | null>(null);
+  // pasa el resultado de la calculadora al campo y avisa a React del cambio
+  function use(value: string) {
+    const el = ref.current;
+    if (!el) return;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(el, value);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
   return (
-    <div className={cx("flex items-center rounded-xl bg-paper px-3.5 focus-within:ring-1 focus-within:ring-[var(--m-cobalt)]", large ? "py-2" : "py-3")}>
+    <div className={cx("flex items-center rounded-xl bg-paper pl-3.5 focus-within:ring-1 focus-within:ring-[var(--m-cobalt)]", large ? "py-2" : "py-1.5")}>
       <span className={cx("mr-1 font-700 text-ink-3", large ? "text-[28px]" : "text-[16px]")}>$</span>
       <input
+        ref={ref}
         name={name}
         inputMode="decimal"
         autoComplete="off"
@@ -117,8 +130,17 @@ export function AmountInput({
         placeholder={placeholder}
         required={required}
         autoFocus={autoFocus}
-        className={cx("amount w-full bg-transparent outline-none placeholder:text-ink-3", large ? "text-[34px]" : "text-[16px]")}
+        className={cx("amount w-full bg-transparent py-1.5 outline-none placeholder:text-ink-3", large ? "text-[34px]" : "text-[16px]")}
       />
+      <button
+        type="button"
+        onClick={() => setCalc(ref.current?.value ?? "")}
+        className="mr-1 flex size-10 shrink-0 items-center justify-center rounded-full text-ink-3 active:bg-press"
+        aria-label="Calcular el monto"
+      >
+        <Calculator size={18} />
+      </button>
+      {calc !== null && <CalculatorSheet initial={calc} onClose={() => setCalc(null)} onUse={use} />}
     </div>
   );
 }

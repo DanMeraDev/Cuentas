@@ -20,11 +20,16 @@ export default async function YoPage() {
     where: and(eq(schema.personalEntries.memberId, ctx.me.id), gte(schema.personalEntries.occurredOn, `${month}-01`)),
     orderBy: [desc(schema.personalEntries.occurredOn)],
   });
-  const income = entries.filter((e) => e.amountCents > 0).reduce((a, e) => a + e.amountCents, 0);
-  const spent = -entries.filter((e) => e.amountCents < 0).reduce((a, e) => a + e.amountCents, 0);
-  const byCat = new Map<string, number>();
-  for (const e of entries.filter((e) => e.amountCents < 0)) byCat.set(e.category, (byCat.get(e.category) ?? 0) - e.amountCents);
-  const cats = [...byCat.entries()].sort((a, b) => b[1] - a[1]);
+  // Neto por categoría: una devolución del arriendo resta del arriendo (no cuenta
+  // como ingreso) y un préstamo que te pagaron resta de lo que prestaste.
+  const net = new Map<string, number>();
+  for (const e of entries) net.set(e.category, (net.get(e.category) ?? 0) + e.amountCents);
+  const income = [...net.values()].filter((v) => v > 0).reduce((a, v) => a + v, 0);
+  const spent = -[...net.values()].filter((v) => v < 0).reduce((a, v) => a + v, 0);
+  const cats = [...net.entries()]
+    .filter(([, v]) => v < 0)
+    .map(([k, v]) => [k, -v] as [string, number])
+    .sort((a, b) => b[1] - a[1]);
   const max = cats[0]?.[1] ?? 1;
   const c = colorVars(ctx.me.color);
 

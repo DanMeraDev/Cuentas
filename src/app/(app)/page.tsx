@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Bell } from "lucide-react";
+import { CalculatorButton } from "@/components/Calculator";
 import { requireContext } from "@/lib/auth";
 import { listEvents, loadHouse, pendingDrafts, unreadCount } from "@/lib/queries";
 import { BalanceHero, EventItem, PotRow, RentMini } from "@/components/house";
@@ -36,7 +37,9 @@ export default async function HomePage() {
     <Screen
       title={`Hola, ${ctx.me.name}`}
       action={
-        <Link href="/avisos" className="relative -mr-2 flex size-10 items-center justify-center rounded-full active:bg-press" aria-label={`Avisos${unread ? ` (${unread} sin leer)` : ""}`}>
+        <div className="-mr-2 flex items-center">
+        <CalculatorButton className="text-ink-2" />
+        <Link href="/avisos" className="relative flex size-10 items-center justify-center rounded-full active:bg-press" aria-label={`Avisos${unread ? ` (${unread} sin leer)` : ""}`}>
           <Bell size={22} />
           {unread > 0 && (
             <span className="absolute top-1 right-1 flex min-w-[18px] items-center justify-center rounded-full bg-bad px-1 text-[11px] font-800 text-white">
@@ -44,6 +47,7 @@ export default async function HomePage() {
             </span>
           )}
         </Link>
+        </div>
       }
     >
       {other && <BalanceHero me={ctx.me} other={other} balance={house.balances[0]} />}

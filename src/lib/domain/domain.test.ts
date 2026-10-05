@@ -261,3 +261,18 @@ describe("préstamos con gente de fuera", () => {
     expect(allocateExternal(rem, 1000, "even")).toEqual({ a: 200, b: 800 });
   });
 });
+
+import { evaluate } from "../calc";
+
+describe("calculadora", () => {
+  it("opera con prioridad, decimales y porcentaje", () => {
+    expect(evaluate("550-250-40")).toBe(260);
+    expect(evaluate("14,75/2")).toBe(7.38);
+    expect(evaluate("2+3×4")).toBe(14);
+    expect(evaluate("(2+3)×4")).toBe(20);
+    expect(evaluate("100-10%")).toBe(99.9);
+    expect(evaluate("-5+10")).toBe(5);
+    expect(evaluate("12÷")).toBeNull();
+    expect(evaluate("")).toBeNull();
+  });
+});
