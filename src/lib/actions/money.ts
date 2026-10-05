@@ -19,7 +19,7 @@ import {
 } from "@/lib/ledger";
 import { allocatePayment, pairBalance, potDeliveries, takeFromHolders } from "@/lib/domain/balances";
 import { rentSummary, setAsideNotice } from "@/lib/domain/rent";
-import { loadHouse } from "@/lib/queries";
+import { loadHouse, personalMoney } from "@/lib/queries";
 import { formatCents, parseAmountToCents, splitEvenly } from "@/lib/money";
 import { formatDay, monthKey, periodLabel, todayISO } from "@/lib/periods";
 import { CATEGORIES } from "@/lib/defaults";
@@ -944,5 +944,36 @@ export async function rentAdjust(_: ActionResult, form: FormData): Promise<Actio
       await notify(tx, ctx.household.id, others(ctx), "Arriendo ajustado", `${ctx.me.name} ajustó las partes de ${periodLabel(period)}: ${lines.join(", ")}.`, "/casa/arriendo");
     });
     return done(`Listo: ${lines.join(", ")}.`);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Igualar la cuenta personal con lo que hay de verdad en el banco
+// ---------------------------------------------------------------------------
+
+export async function setBankBalance(_: ActionResult, form: FormData): Promise<ActionResult> {
+  return attempt(async () => {
+    const ctx = await actionContext();
+    const actual = parseAmountToCents(str(form, "actual"));
+    if (actual === null) return fail("Escribe cuánto tienes.");
+    const money = await personalMoney(ctx);
+    const diff = actual - money.total;
+    if (diff === 0) return ok("Ya coincide con tu banco.");
+    const occurredOn = todayISO(ctx.household.timezone);
+    await db.transaction(async (tx) => {
+      const eventId = await createEvent(tx, {
+        householdId: ctx.household.id,
+        type: "balance_adjust",
+        actorId: ctx.me.id,
+        occurredOn,
+        amountCents: diff,
+        title: "Ajuste de saldo con el banco",
+        detail: `Tenía ${formatCents(actual)}; la app decía ${formatCents(money.total)}`,
+        category: "ajuste",
+        privateTo: ctx.me.id,
+      });
+      await personal(tx, { householdId: ctx.household.id, eventId, occurredOn }, ctx.me.id, diff, "ajuste", "Ajuste de saldo con el banco");
+    });
+    return done(`Listo: ahora la app dice ${formatCents(actual)}.`);
   });
 }

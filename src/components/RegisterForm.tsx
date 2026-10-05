@@ -115,7 +115,7 @@ export function RegisterForm({
             <input type="hidden" name="merchant" value={defaults.merchant} />
             <Field label="Categoría">
               <select name="category" defaultValue={defaults.category} className={inputClass}>
-                {CATEGORIES.filter((c) => c.key !== "ingreso").map((c) => (
+                {CATEGORIES.filter((c) => !["ingreso", "ajuste"].includes(c.key)).map((c) => (
                   <option key={c.key} value={c.key}>
                     {c.emoji} {c.label}
                   </option>

@@ -26,6 +26,7 @@ export const CATEGORIES = [
   { key: "educacion", label: "Estudios", emoji: "📚" },
   { key: "prestamo", label: "Préstamo", emoji: "🤝" },
   { key: "ingreso", label: "Ingreso", emoji: "💵" },
+  { key: "ajuste", label: "Ajuste de saldo", emoji: "🏦" },
   { key: "otros", label: "Otros", emoji: "📦" },
 ] as const;
 

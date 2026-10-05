@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { and, asc, count, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import type { AppContext } from "./auth";
 import {
@@ -324,4 +324,39 @@ export async function listEvents(
     orderBy: [desc(schema.events.occurredOn), desc(schema.events.createdAt)],
     limit: opts.limit ?? 50,
   });
+}
+
+// Deudas entre miembros que ya se contaron en las cuentas personales cuando
+// pasó la cosa (tu parte de un gasto compartido, un aporte que recibió otro),
+// pero cuya plata todavía no se movió. Los préstamos (debt / debt_payment) no
+// entran: esos ya mueven la cuenta personal en el momento.
+const PENDING_KINDS = ["shared_expense", "contribution_share", "settlement", "rent_adjust", "external_cover"];
+
+/**
+ * La plata que debería tener la persona (banco + efectivo):
+ * lo suyo (entradas − salidas) + plata de bolsas que tiene + pendiente con los demás.
+ */
+export async function personalMoney(ctx: AppContext) {
+  const [[{ own }], ledger, holdingRows] = await Promise.all([
+    db
+      .select({ own: sql<number>`coalesce(sum(${schema.personalEntries.amountCents}), 0)::int` })
+      .from(schema.personalEntries)
+      .where(eq(schema.personalEntries.memberId, ctx.me.id)),
+    db.query.memberLedger.findMany({
+      where: and(
+        eq(schema.memberLedger.householdId, ctx.household.id),
+        inArray(schema.memberLedger.kind, PENDING_KINDS),
+        or(eq(schema.memberLedger.debtorId, ctx.me.id), eq(schema.memberLedger.creditorId, ctx.me.id)),
+      ),
+    }),
+    db
+      .select({ potId: schema.potMovements.potId, total: sql<number>`sum(${schema.potMovements.amountCents})::int` })
+      .from(schema.potMovements)
+      .where(and(eq(schema.potMovements.householdId, ctx.household.id), eq(schema.potMovements.holderId, ctx.me.id)))
+      .groupBy(schema.potMovements.potId),
+  ]);
+  // positivo: tienes plata que es de otro (aún no se la pasas); negativo: te deben
+  const pending = ledger.reduce((a, l) => a + (l.debtorId === ctx.me.id ? l.amountCents : -l.amountCents), 0);
+  const holdings = holdingRows.reduce((a, r) => a + r.total, 0);
+  return { own, holdings, pending, holdingRows, total: own + holdings + pending };
 }

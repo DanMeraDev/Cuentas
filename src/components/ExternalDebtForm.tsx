@@ -84,7 +84,7 @@ export function ExternalDebtForm({
         {spent && (
           <Field label="Categoría">
             <select name="category" defaultValue="comida" className={inputClass}>
-              {CATEGORIES.filter((c) => !["ingreso", "prestamo"].includes(c.key)).map((c) => (
+              {CATEGORIES.filter((c) => !["ingreso", "prestamo", "ajuste"].includes(c.key)).map((c) => (
                 <option key={c.key} value={c.key}>
                   {c.emoji} {c.label}
                 </option>
