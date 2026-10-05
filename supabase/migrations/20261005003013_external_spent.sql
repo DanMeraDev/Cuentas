@@ -1,0 +1,1 @@
+ALTER TABLE "external_debts" ADD COLUMN "category" text;

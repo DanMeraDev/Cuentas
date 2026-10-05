@@ -9,6 +9,7 @@ import { createEvent, notify, owe, personal, potMove, type Ctx } from "@/lib/led
 import { allocateExternal, externalRemaining } from "@/lib/domain/external";
 import { formatCents, parseAmountToCents, splitEvenly } from "@/lib/money";
 import { todayISO } from "@/lib/periods";
+import { CATEGORIES } from "@/lib/defaults";
 import { attempt, fail, ok, UserError, type ActionResult } from "./result";
 
 function str(form: FormData, key: string) {
@@ -58,9 +59,14 @@ export async function createExternalDebt(_: ActionResult, form: FormData): Promi
     if (!personName) return fail("Escribe el nombre de la persona.");
     const amount = parseAmountToCents(str(form, "amount"));
     if (!amount || amount <= 0) return fail("Revisa el monto.");
-    const mode = str(form, "mode") === "personal" ? "personal" : "pot";
+    const rawMode = str(form, "mode");
+    // "spent" (pagó algo por nosotros) solo aplica cuando nos prestaron
+    const mode = rawMode === "personal" ? "personal" : rawMode === "spent" && direction === "we_owe" ? "spent" : "pot";
     const who = member(ctx, str(form, "memberId") || ctx.me.id);
     const p = mode === "pot" ? await pot(ctx, str(form, "potId")) : null;
+    const category = mode === "spent" ? CATEGORIES.find((c) => c.key === str(form, "category"))?.key ?? "otros" : null;
+    // en "spent", owner = "all" (se divide) o el id de quien debe todo
+    const owner = mode === "spent" ? str(form, "owner") || "all" : "all";
     const description = str(form, "description") || (direction === "we_owe" ? `Préstamo de ${personName}` : `Préstamo a ${personName}`);
     const occurredOn = dateOf(form, ctx);
     const fileId = await fileOf(ctx, form);
@@ -69,6 +75,8 @@ export async function createExternalDebt(_: ActionResult, form: FormData): Promi
     let shares: { memberId: string; amountCents: number }[];
     if (mode === "personal") {
       shares = [{ memberId: who.id, amountCents: amount }];
+    } else if (mode === "spent" && owner !== "all") {
+      shares = [{ memberId: member(ctx, owner).id, amountCents: amount }];
     } else if (str(form, "split") === "custom") {
       shares = ctx.members.map((m) => ({ memberId: m.id, amountCents: parseAmountToCents(str(form, `share_${m.id}`)) ?? 0 }));
       const sum = shares.reduce((a, s) => a + s.amountCents, 0);
@@ -88,12 +96,14 @@ export async function createExternalDebt(_: ActionResult, form: FormData): Promi
         amountCents: amount,
         title: description,
         detail:
-          direction === "we_owe"
-            ? `${personName} nos prestó · ${p ? `entró a ${p.name}` : `lo recibió ${who.name}`}`
-            : `Le prestamos a ${personName} · ${p ? `salió de ${p.name}` : `lo prestó ${who.name}`}`,
-        category: "prestamo",
+          mode === "spent"
+            ? `${personName} pagó por ${shares.length > 1 ? "nosotros" : ctx.members.find((m) => m.id === shares[0].memberId)?.name}`
+            : direction === "we_owe"
+              ? `${personName} nos prestó · ${p ? `entró a ${p.name}` : `lo recibió ${who.name}`}`
+              : `Le prestamos a ${personName} · ${p ? `salió de ${p.name}` : `lo prestó ${who.name}`}`,
+        category: category ?? "prestamo",
         fileId,
-        data: { direction, personName, mode, potId: p?.id ?? null, memberId: who.id, shares },
+        data: { direction, personName, mode, potId: p?.id ?? null, memberId: who.id, shares, category },
       });
       const c: Ctx = { householdId: ctx.household.id, eventId, occurredOn };
       const [debt] = await tx
@@ -104,6 +114,7 @@ export async function createExternalDebt(_: ActionResult, form: FormData): Promi
           personName,
           direction,
           mode,
+          category,
           potId: p?.id ?? null,
           amountCents: amount,
           description,
@@ -112,9 +123,10 @@ export async function createExternalDebt(_: ActionResult, form: FormData): Promi
         .returning({ id: schema.externalDebts.id });
       await tx.insert(schema.externalDebtShares).values(shares.map((s) => ({ externalDebtId: debt.id, ...s })));
 
+      // si pagó algo por nosotros no entra plata: solo queda la deuda
       const sign = direction === "we_owe" ? 1 : -1;
       if (p) await potMove(tx, c, p.id, who.id, sign * amount, "external_loan");
-      else await personal(tx, c, who.id, sign * amount, "prestamo", description);
+      else if (mode === "personal") await personal(tx, c, who.id, sign * amount, "prestamo", description);
 
       await notify(
         tx,
@@ -187,6 +199,23 @@ export async function payExternalDebt(_: ActionResult, form: FormData): Promise<
 
       if (p) {
         await potMove(tx, c, p.id, who.id, weOwe ? -amount : amount, "external_payment");
+      } else if (debt.mode === "spent") {
+        // Pagó algo por nosotros: al pagarle, cada uno ve su parte como gasto
+        // (ej. comida). Si quien paga cubre la parte de otro, se la presta.
+        const cat = debt.category ?? "otros";
+        await personal(tx, c, who.id, -(alloc[who.id] ?? 0), cat, `${debt.description} (le pagué a ${debt.personName})`);
+        for (const [memberId, part] of Object.entries(alloc)) {
+          if (memberId === who.id || part <= 0) continue;
+          const other = member(ctx, memberId);
+          await personal(tx, c, who.id, -part, "prestamo", `Pagué la parte de ${other.name} a ${debt.personName}`);
+          await personal(tx, c, memberId, -part, cat, `${debt.description} (pagó ${who.name})`);
+          await personal(tx, c, memberId, part, "prestamo", `${who.name} pagó mi parte a ${debt.personName}`);
+          const [d] = await tx
+            .insert(schema.debts)
+            .values({ householdId: ctx.household.id, eventId, debtorId: memberId, creditorId: who.id, amountCents: part, description: `${who.name} pagó tu parte a ${debt.personName}`, occurredOn })
+            .returning({ id: schema.debts.id });
+          await owe(tx, c, memberId, who.id, part, "debt", d.id);
+        }
       } else {
         await personal(tx, c, who.id, weOwe ? -amount : amount, "prestamo", weOwe ? `Le pagué a ${debt.personName}` : `${debt.personName} me devolvió`);
         // Si cubrió la parte de otro, queda como préstamo entre ellos (o al revés si

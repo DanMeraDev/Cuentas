@@ -15,6 +15,13 @@
       "when": 1791158482934,
       "tag": "20261005000122_external_debts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791160213613,
+      "tag": "20261005003013_external_spent",
+      "breakpoints": true
     }
   ]
 }

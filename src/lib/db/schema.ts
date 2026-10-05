@@ -471,7 +471,10 @@ export const externalDebts = pgTable(
     // we_owe: nos prestaron | they_owe: le prestamos
     direction: text("direction").notNull(),
     // pot: la plata entró o salió de una bolsa (es de la casa) | personal: de un miembro
+    // spent: la persona pagó algo por nosotros (no entró plata, solo queda la deuda)
     mode: text("mode").notNull(),
+    // categoría del gasto cuando mode = spent (ej. comida)
+    category: text("category"),
     potId: uuid("pot_id").references(() => pots.id, { onDelete: "restrict" }),
     amountCents: integer("amount_cents").notNull(),
     description: text("description").notNull(),
