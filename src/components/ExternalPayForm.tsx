@@ -38,7 +38,7 @@ export function ExternalPayForm({
     );
   }
   return (
-    <ActionForm action={payExternalDebt} className="mt-3 space-y-3">
+    <ActionForm action={payExternalDebt} className="mt-3 w-full basis-full space-y-3">
       <input type="hidden" name="externalDebtId" value={debtId} />
       <AmountInput name="amount" defaultValue={(remainingCents / 100).toFixed(2)} />
       <p className="text-[13px] text-ink-3">Faltan {formatCents(remainingCents)}. Puede ser una parte.</p>

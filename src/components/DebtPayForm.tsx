@@ -15,7 +15,7 @@ export function DebtPayForm({ debtId, remainingCents }: { debtId: string; remain
     );
   }
   return (
-    <ActionForm action={payDebt} className="mt-3 space-y-2">
+    <ActionForm action={payDebt} className="mt-3 w-full basis-full space-y-2">
       <input type="hidden" name="debtId" value={debtId} />
       <AmountInput name="amount" defaultValue={(remainingCents / 100).toFixed(2)} />
       <p className="text-[13px] text-ink-3">Faltan {formatCents(remainingCents)}. Puedes abonar una parte.</p>

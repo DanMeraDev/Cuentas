@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { requireContext } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
@@ -145,7 +146,15 @@ export default async function BalancePage() {
                 </div>
                 <span className="amount text-[16px]">{formatCents(remaining)}</span>
               </div>
-              <DebtPayForm debtId={d.id} remainingCents={remaining} />
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={`/movimientos/${d.eventId}`}
+                  className="mt-2 rounded-full px-3.5 py-1.5 text-[14px] font-600 text-ink-2 active:bg-press"
+                >
+                  Ver detalle
+                </Link>
+                <DebtPayForm debtId={d.id} remainingCents={remaining} />
+              </div>
             </div>
           ))
         ) : (
@@ -177,6 +186,13 @@ export default async function BalancePage() {
                 </div>
                 <span className="amount text-[16px]">{formatCents(total)}</span>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/movimientos/${d.eventId}`}
+                className="mt-2 rounded-full px-3.5 py-1.5 text-[14px] font-600 text-ink-2 active:bg-press"
+              >
+                Ver detalle
+              </Link>
               <ExternalPayForm
                 debtId={d.id}
                 weOwe={d.direction === "we_owe"}
@@ -187,6 +203,7 @@ export default async function BalancePage() {
                 pots={house.pots.map((p) => ({ id: p.id, name: p.name, emoji: p.emoji }))}
                 defaultPotId={d.mode === "pot" ? d.potId : null}
               />
+              </div>
             </div>
           ))
         ) : (
